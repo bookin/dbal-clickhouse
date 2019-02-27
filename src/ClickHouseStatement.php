@@ -266,9 +266,16 @@ class ClickHouseStatement implements \IteratorAggregate, \Doctrine\DBAL\Driver\S
         }
 
         $sql = $this->statement;
-        foreach (array_keys($this->values) as $key) {
-            $sql = preg_replace('/(' . (is_int($key) ? '\?' : ':' . $key) . ')/i', $this->getTypedParam($key), $sql, 1);
-        }
+
+        $statementParts = explode('?', $sql);
+        $value_keys = array_keys($this->values);
+        array_walk($statementParts, function (&$part, $key) use ($value_keys): void {
+            if (! array_key_exists($key, $value_keys)) {
+                return;
+            }
+            $part .= $this->getTypedParam($key);
+        });
+        $sql = implode('', $statementParts);
 
         $this->processViaSMI2($sql);
 
