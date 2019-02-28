@@ -268,14 +268,25 @@ class ClickHouseStatement implements \IteratorAggregate, \Doctrine\DBAL\Driver\S
         $sql = $this->statement;
 
         $statementParts = explode('?', $sql);
-        $value_keys = array_keys($this->values);
-        array_walk($statementParts, function (&$part, $key) use ($value_keys): void {
-            if (! array_key_exists($key, $value_keys)) {
-                return;
+        if(count($statementParts)>1){
+            $value_keys = array_keys($this->values);
+            array_walk($statementParts, function (&$part, $key) use ($value_keys): void {
+                if (! array_key_exists($key, $value_keys)) {
+                    return;
+                }
+                $part .= $this->getTypedParam($key);
+            });
+            $sql = implode('', $statementParts);
+        }else{
+            foreach (array_keys($this->values) as $key) {
+                $sql = preg_replace(
+                    '/(' . (is_int($key) ? '\?' : ':' . $key) . ')/i',
+                    $this->getTypedParam($key),
+                    $sql,
+                    1
+                );
             }
-            $part .= $this->getTypedParam($key);
-        });
-        $sql = implode('', $statementParts);
+        }
 
         $this->processViaSMI2($sql);
 
@@ -307,7 +318,7 @@ class ClickHouseStatement implements \IteratorAggregate, \Doctrine\DBAL\Driver\S
     protected function processViaSMI2($sql)
     {
         //smi2 CH Driver works only with FORMAT JSON, so add suffix if it is SELECT statement
-        $sql = trim($sql);
+        /*$sql = trim($sql);
         if (strtoupper(substr($sql, 0, 6)) === 'SELECT') {
             if (strtoupper(substr($sql, -11)) !== 'FORMAT JSON') {
                 $sql .= ' FORMAT JSON';
@@ -315,7 +326,14 @@ class ClickHouseStatement implements \IteratorAggregate, \Doctrine\DBAL\Driver\S
         }
 
         //TODO catch in Driver and convert into DBALExceptions all SMI2's exceptions
-        $this->rows = $this->smi2CHClient->write($sql)->rows();
+        $this->rows = $this->smi2CHClient->write($sql)->rows();*/
+        $sql = trim($sql);
+        $this->rows =
+            0 === stripos($sql, 'select') ||
+            0 === stripos($sql, 'show') ||
+            0 === stripos($sql, 'describe') ?
+                $this->smi2CHClient->select($sql)->rows() :
+                $this->smi2CHClient->write($sql)->rows();
     }
 
     /**
